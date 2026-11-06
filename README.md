@@ -1,7 +1,7 @@
 # ctrlPi MCP Bridge
 
 [![Platform: Cross-Platform](https://img.shields.io/badge/platform-Cross--Platform-006400.svg)](#requirements)
-[![Version 0.9.30](https://img.shields.io/badge/version-0.9.30-blue.svg)](https://github.com/ctrlpi/mcp-bridge/tags)
+[![Version 0.9.31](https://img.shields.io/badge/version-0.9.31-blue.svg)](https://github.com/ctrlpi/mcp-bridge/tags)
 [![Node 20+](https://img.shields.io/badge/node-20%2B-blue.svg)](https://nodejs.org/)
 [![Auth: Api-Key](https://img.shields.io/badge/auth-Api--Key-orange.svg)](#authentication)
 [![Agents: Pi, Pico & ESP32](https://img.shields.io/badge/agents-Pi%2C%20Pico%20%26%20ESP32-006400.svg)](#requirements)
@@ -90,6 +90,8 @@ Run it with `npm start` from the installation folder (`node_modules/@ctrlpi/mcp-
 
 **`--http`** serves Streamable HTTP at `POST /mcp` on port **8315**, one above the agents' own 8314, for a client that cannot launch a local process or sits on another machine. It is a server: it stays up, holds a port, and requires `mcp.api_key` from every caller (see [Authentication](#authentication)).
 
+No environment variables are needed: everything is set with the flags below or in the config files.
+
 ### Run flags
 
 | Flag&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Effect |
@@ -116,7 +118,7 @@ To reach a bridge over the network, start it in HTTP mode first (`npm start -- -
     "ctrlpi": {
       "command": "npx",
       "args": [
-        "-y", "mcp-remote", "http://<host>:8315/mcp",
+        "-y", "mcp-remote", "http://<host>:8315/mcp", "--allow-http",
         "--header", "Api-Key:your-mcp-key"
       ]
     }
@@ -124,7 +126,13 @@ To reach a bridge over the network, start it in HTTP mode first (`npm start -- -
 }
 ```
 
+`--allow-http` permits the connection over a trusted local network.
+
 Pick one of the two, not both. Restart Claude Desktop after saving either.
+
+### Connect from Cursor
+
+Cursor takes the same JSON as Claude Desktop, for either form above. Put it in `~/.cursor/mcp.json`, or in `.cursor/mcp.json` inside a project.
 
 ### Connect from Claude Code
 
