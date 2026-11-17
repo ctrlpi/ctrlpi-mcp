@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// mcp-bridge - an MCP server that controls one or more GPIO agents (Raspberry Pi,
+// ctrlpi-mcp - an MCP server that controls one or more GPIO agents (Raspberry Pi,
 // Pico W or ESP32) by calling their REST API over HTTP.
 //
 // This app acts as an API proxy. It routes tool calls to remote agents by name (from
@@ -40,7 +40,7 @@ function intFlag(flag, fallback, min, max) {
 }
 
 function usageError(msg) {
-  console.error(`mcp-bridge: ${msg}`);
+  console.error(`ctrlpi-mcp: ${msg}`);
   process.exit(2);
 }
 
@@ -1126,7 +1126,7 @@ const TOOLS = [
 // --- MCP protocol (JSON-RPC 2.0) ---
 
 // Version syncs with package.json automatically.
-const SERVER_INFO = { name: "mcp-bridge", version: require("./package.json").version };
+const SERVER_INFO = { name: "ctrlpi-mcp", version: require("./package.json").version };
 // Fallback protocol version (we echo the client's version if provided).
 const PROTOCOL_VERSION = "2025-06-18";
 
@@ -1309,11 +1309,11 @@ function runHttp(host, port) {
   });
   server.on("error", (e) => {
     const why = e.code === "EADDRINUSE" ? `port ${port} is already in use` : e.message;
-    console.error(`mcp-bridge: cannot listen on ${host}:${port}: ${why}`);
+    console.error(`ctrlpi-mcp: cannot listen on ${host}:${port}: ${why}`);
     process.exit(1);
   });
   server.listen(port, host, () => {
-    console.log(`INFO:     mcp-bridge Streamable HTTP at http://${host}:${port}/mcp`);
+    console.log(`INFO:     ctrlpi-mcp Streamable HTTP at http://${host}:${port}/mcp`);
   });
 }
 

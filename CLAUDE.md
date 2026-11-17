@@ -1,4 +1,4 @@
-# CLAUDE.md - mcp-bridge
+# CLAUDE.md - ctrlpi-mcp
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -23,7 +23,7 @@ Everything lives in **`~/.ctrlpi/`**:
 | `~/.ctrlpi/agents-config.json` | shared | `agents[]` - `{name, ip, port, api_key, updated_at}` per agent. Read by all ctrlpi projects, updatable by any. |
 | `~/.ctrlpi/mcp-config.json` | this server | `mcp` (its own HTTP-mode `api_key`, `ip`, `port`) and `agents` whitelist/blacklist. |
 
-When reading `agents-config.json`, `mcp-bridge` also checks if `/var/lib/homebridge/ctrlpi-agents-config.json` exists; if so, it reads it (read-only) and reconciles agents whose `updated_at` date/time is newer. It never writes to the Homebridge path.
+When reading `agents-config.json`, `ctrlpi-mcp` also checks if `/var/lib/homebridge/ctrlpi-agents-config.json` exists; if so, it reads it (read-only) and reconciles agents whose `updated_at` date/time is newer. It never writes to the Homebridge path.
 
 **`--config <folder>`** overrides the directory for both files.
 
@@ -95,4 +95,4 @@ The timer repeats `sweep()` hourly (`--rescan <n>`) to pick up agents switched o
 
 ## Tests
 
-`npm test` runs `test/mcp-bridge.test.js` against `mock_agent.py` (Python 3). The discovery tests set `MCP_BRIDGE_SCAN_LAN=0`, which limits a sweep to the localhost mock agents on 9314-9319, so they never probe the real /24 (on a Mac or on CI). Tool errors come back with `isError: true` (`toolResult()`). Keys, names, URLs and scripts in tool arguments are sent as text (`asText()` / `textFields()`), so an AI that passes `api_key: 4242` sets `"4242"`.
+`npm test` runs `test/ctrlpi-mcp.test.js` against `mock_agent.py` (Python 3). The discovery tests set `MCP_BRIDGE_SCAN_LAN=0`, which limits a sweep to the localhost mock agents on 9314-9319, so they never probe the real /24 (on a Mac or on CI). Tool errors come back with `isError: true` (`toolResult()`). Keys, names, URLs and scripts in tool arguments are sent as text (`asText()` / `textFields()`), so an AI that passes `api_key: 4242` sets `"4242"`.

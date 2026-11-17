@@ -93,7 +93,7 @@ class HttpClient {
         await sleep(50);
       }
     }
-    throw new Error(`mcp-bridge on port ${this.port} failed to start`);
+    throw new Error(`ctrlpi-mcp on port ${this.port} failed to start`);
   }
 
   async start() {
@@ -345,7 +345,7 @@ async function runTestSet(client) {
       // 1. Rotate to a new key
       await client.callTool('mcp_config_write', { agent, api_key: newKey });
       
-      // 2. Subsequent call should succeed because mcp-bridge auto-saves the new key
+      // 2. Subsequent call should succeed because ctrlpi-mcp auto-saves the new key
       const res = await client.callTool('mcp_gpio_read', { agent, name_or_gpio: 'all' });
       assert.doesNotMatch(String(parseToolResult(res)), /403/);
       
@@ -645,7 +645,7 @@ describe('Startup and shutdown', () => {
     try {
       const r = await runServer(['--http', '--port', String(busyPort)]);
       assert.equal(r.code, 1);
-      assert.match(r.stderr, /^mcp-bridge: cannot listen on 0\.0\.0\.0:\d+: port \d+ is already in use$/m);
+      assert.match(r.stderr, /^ctrlpi-mcp: cannot listen on 0\.0\.0\.0:\d+: port \d+ is already in use$/m);
     } finally {
       blocker.close();
     }

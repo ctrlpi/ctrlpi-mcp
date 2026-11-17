@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.ctrlpi/mcp-bridge",
+  "name": "io.github.ctrlpi/ctrlpi-mcp",
   "description": "MCP server to control Raspberry Pi, Pico W and ESP32 GPIO agents from an AI assistant.",
   "repository": {
-    "url": "https://github.com/ctrlpi/mcp-bridge",
+    "url": "https://github.com/ctrlpi/ctrlpi-mcp",
     "source": "github"
   },
-  "version": "0.9.31",
+  "version": "0.9.40",
   "packages": [
     {
       "registryType": "npm",
-      "identifier": "@ctrlpi/mcp-bridge",
-      "version": "0.9.31",
+      "identifier": "ctrlpi-mcp",
+      "version": "0.9.40",
       "transport": {
         "type": "stdio"
       }

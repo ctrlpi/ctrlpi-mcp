@@ -1,14 +1,14 @@
-# ctrlPi MCP Bridge
+# ctrlPi MCP
 
 [![Platform: Cross-Platform](https://img.shields.io/badge/platform-Cross--Platform-006400.svg)](#requirements)
-[![Version 0.9.31](https://img.shields.io/badge/version-0.9.31-blue.svg)](https://github.com/ctrlpi/mcp-bridge/tags)
+[![Version 0.9.40](https://img.shields.io/badge/version-0.9.40-blue.svg)](https://github.com/ctrlpi/ctrlpi-mcp/tags)
 [![Node 20+](https://img.shields.io/badge/node-20%2B-blue.svg)](https://nodejs.org/)
 [![Auth: Api-Key](https://img.shields.io/badge/auth-Api--Key-orange.svg)](#authentication)
 [![Agents: Pi, Pico & ESP32](https://img.shields.io/badge/agents-Pi%2C%20Pico%20%26%20ESP32-006400.svg)](#requirements)
 [![Protocol: MCP](https://img.shields.io/badge/protocol-MCP-006400.svg)](#tools)
 [![License: MIT](https://img.shields.io/badge/license-MIT-188038.svg)](LICENSE)
 ![Status: Beta](https://img.shields.io/badge/status-Beta-red.svg)
-[![Build Status](https://github.com/ctrlpi/mcp-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/ctrlpi/mcp-bridge/actions)
+[![Build Status](https://github.com/ctrlpi/ctrlpi-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/ctrlpi/ctrlpi-mcp/actions)
 
 An MCP (Model Context Protocol) server that lets an AI agent (e.g. Claude Desktop) control one or more GPIO agents through an ordinary conversation, by calling their REST API over HTTP.
 
@@ -22,7 +22,7 @@ This app acts as a pure API proxy. It is a thin MCP front-end: every tool target
 [MCP client: Claude Desktop / mcp-remote]
         │  MCP (STDIO or Streamable HTTP /mcp)
         ▼
-   [mcp-bridge]
+   [ctrlpi-mcp]
         │  REST (GET/POST, Api-Key per agent)
         ├──────────────→ [garage-pi  192.168.1.50:8314]   (pi-gpio-api)
         └──────────────→ [shed-pico  192.168.1.51:8314]   (pico-gpio-api)
@@ -45,7 +45,7 @@ Open Claude Desktop's **Settings → Developer → Edit Config**, which opens `~
   "mcpServers": {
     "ctrlpi": {
       "command": "npx",
-      "args": ["-y", "@ctrlpi/mcp-bridge"]
+      "args": ["-y", "ctrlpi-mcp"]
     }
   }
 }
@@ -62,8 +62,8 @@ The sweep repeats on every launch and every hour after it, which is what picks u
 Install it properly when you want to own the process, or when **the bridge runs on a Pi** and has to be reachable from Claude Desktop and other clients on different machines. Under `npx` the server lives and dies with the client that started it and is refetched as needed; installed, it stays in one place and you start and stop it yourself.
 
 ```bash
-npm install @ctrlpi/mcp-bridge
-cd node_modules/@ctrlpi/mcp-bridge
+npm install ctrlpi-mcp
+cd node_modules/ctrlpi-mcp
 npm start -- --http
 ```
 
@@ -76,15 +76,15 @@ HTTP mode is intended for continuous background execution; a stdio server is sta
 ```bash
 npm install -g pm2       # if you don't already have it
 pm2 startup              # no need to repeat if already done
-pm2 start server.js --name mcp-bridge -- --http
+pm2 start server.js --name ctrlpi-mcp -- --http
 pm2 save
 ```
 
-`--name mcp-bridge` is not optional: PM2 would otherwise name the process after the script and call it `server`. `mcp-bridge` is the name the rest of the ctrlPi tooling looks for when it manages this process. The `--` is not optional either, or PM2 reads `--http` as one of its own flags and starts nothing.
+`--name ctrlpi-mcp` is not optional: PM2 would otherwise name the process after the script and call it `server`. `ctrlpi-mcp` is the name the rest of the ctrlPi tooling looks for when it manages this process. The `--` is not optional either, or PM2 reads `--http` as one of its own flags and starts nothing.
 
 ## Run
 
-Run it with `npm start` from the installation folder (`node_modules/@ctrlpi/mcp-bridge`), passing flags after `--` (`npm start -- --http`), or with `npx -y @ctrlpi/mcp-bridge` and no install at all. The flags below are identical either way, and one given without a valid value (say `--port` with no number) stops the server with an error.
+Run it with `npm start` from the installation folder (`node_modules/ctrlpi-mcp`), passing flags after `--` (`npm start -- --http`), or with `npx -y ctrlpi-mcp` and no install at all. The flags below are identical either way, and one given without a valid value (say `--port` with no number) stops the server with an error.
 
 **stdio** is the default and communicates directly over standard input/output: the transport is the process's own stdin and stdout, and the client that launched it owns both. Everything the server would print goes to stderr instead, because stdout is the protocol channel. This is the mode Claude Desktop uses.
 
@@ -108,7 +108,7 @@ No environment variables are needed: everything is set with the flags below or i
 
 ### Connect from Claude Desktop
 
-For the ordinary case, where Claude Desktop launches the server itself over stdio, use the `npx` form under [Quick start](#quick-start-nothing-to-install). Substitute `"command": "node", "args": ["<path>/node_modules/@ctrlpi/mcp-bridge/server.js"]` if you installed it instead.
+For the ordinary case, where Claude Desktop launches the server itself over stdio, use the `npx` form under [Quick start](#quick-start-nothing-to-install). Substitute `"command": "node", "args": ["<path>/node_modules/ctrlpi-mcp/server.js"]` if you installed it instead.
 
 To reach a bridge over the network, start it in HTTP mode first (`npm start -- --http`), then connect through [`mcp-remote`](https://www.npmjs.com/package/mcp-remote), passing `mcp.api_key` (`your-mcp-key` by default, see [Configuration](#configuration)):
 
@@ -141,7 +141,7 @@ Claude Code speaks both transports directly, so no `mcp-remote` hop is needed. P
 **stdio**, where Claude Code launches its own copy:
 
 ```bash
-claude mcp add ctrlpi -- npx -y @ctrlpi/mcp-bridge
+claude mcp add ctrlpi -- npx -y ctrlpi-mcp
 ```
 
 **Streamable HTTP**, attaching to a bridge already running with `--http`:
@@ -217,7 +217,7 @@ Two files. Neither ships with the package: the first run builds both from a LAN 
 }
 ```
 
-When reading shared agents, `mcp-bridge` also checks if `/var/lib/homebridge/ctrlpi-agents-config.json` exists; if so, it reads it (read-only) and reconciles agents whose `updated_at` date/time is newer. It never writes to the Homebridge config file.
+When reading shared agents, `ctrlpi-mcp` also checks if `/var/lib/homebridge/ctrlpi-agents-config.json` exists; if so, it reads it (read-only) and reconciles agents whose `updated_at` date/time is newer. It never writes to the Homebridge config file.
 
 **`~/.ctrlpi/mcp-config.json`** - what only this server owns:
 
@@ -269,9 +269,9 @@ If two devices answer to one name, that is reported as a possible **cyber attack
 
 ## Why no webhook listener?
 
-mcp-bridge is an inbound control plane only; it never receives the agents' webhooks, by design:
+ctrlpi-mcp is an inbound control plane only; it never receives the agents' webhooks, by design:
 
-- **Push can't wake the model.** MCP clients invoke the server, not the other way round; a webhook arriving here couldn't start a Claude conversation, so a listener wouldn't make the AI reactive. Reactive automation is the bridges' job (`homekit-bridge` :8316, `matter-bridge` :8317).
+- **Push can't wake the model.** MCP clients invoke the server, not the other way round; a webhook arriving here couldn't start a Claude conversation, so a listener wouldn't make the AI reactive. Reactive automation is the bridges' job (`ctrlpi-matter` :8317, `homebridge-ctrlpi` :8318).
 - **Lifecycle.** In stdio mode the server only lives while the MCP client session is open, so events outside a session would be lost.
 
 ## Related projects
@@ -280,12 +280,11 @@ mcp-bridge is an inbound control plane only; it never receives the agents' webho
 - **[`pico-gpio-api`](https://github.com/ctrlpi/pico-gpio-api)**: Raspberry Pi Pico W port of the GPIO REST server, with the same endpoints, wire format, and auth.
 - **[`esp32-gpio-api`](https://github.com/ctrlpi/esp32-gpio-api)**: ESP32 port of the GPIO REST server for MicroPython, with the same endpoints, wire format, and auth.
 - **[`homebridge-ctrlpi`](https://github.com/ctrlpi/homebridge-ctrlpi)**: A Homebridge plugin that brings Raspberry Pi, Pico W, and ESP32 GPIO into Apple Home, by driving one or more GPIO agents over their REST API.
-- **`homekit-bridge`** *(coming soon)*: Native Apple HomeKit bridge that exposes GPIO pins and sensors as HomeKit accessories, driven over the agents' REST API.
-- **`matter-bridge`** *(coming soon)*: Matter bridge that exposes GPIO pins and sensors to any Matter platform (Apple Home, Google Home, Alexa, Home Assistant), driven over the agents' REST API.
+- **`ctrlpi-matter`** *(coming soon)*: Matter bridge that exposes GPIO pins and sensors to any Matter platform (Apple Home, Google Home, Alexa, Home Assistant), driven over the agents' REST API.
 - **[`ctrlpi-cli`](https://github.com/ctrlpi/ctrlpi-cli)**: Command-line interface for interacting with ctrlPi agents, with shared agent configuration.
 - **[`ctrlpi-lab`](https://github.com/ctrlpi/ctrlpi-lab)**: A local browser dashboard for your ctrlPi setup. Test GPIO and sensor endpoints, watch webhook events, and tail agent logs.
 - **[`pico-bay`](https://github.com/ctrlpi/pico-bay)**: Web app and MCP server for managing MicroPython and CircuitPython boards, such as the Raspberry Pi Pico and ESP32, over USB.
-- **`pi-bay`** *(coming soon)*: A local web app and MCP server for Raspberry Pi boards over the network. Edit files, open a remote terminal, and manage your Pi remotely.
+- **[`pi-bay`](https://github.com/ctrlpi/pi-bay)**: A local web app and MCP server for Raspberry Pi boards over the network. Edit files, open a remote terminal, and manage your Pi remotely.
 
 ## Testing
 
