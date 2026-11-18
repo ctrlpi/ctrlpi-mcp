@@ -1,7 +1,7 @@
 # ctrlPi MCP
 
 [![Platform: Cross-Platform](https://img.shields.io/badge/platform-Cross--Platform-006400.svg)](#requirements)
-[![Version 0.9.40](https://img.shields.io/badge/version-0.9.40-blue.svg)](https://github.com/ctrlpi/ctrlpi-mcp/tags)
+[![Version 0.9.41](https://img.shields.io/badge/version-0.9.41-blue.svg)](https://github.com/ctrlpi/ctrlpi-mcp/tags)
 [![Node 20+](https://img.shields.io/badge/node-20%2B-blue.svg)](https://nodejs.org/)
 [![Auth: Api-Key](https://img.shields.io/badge/auth-Api--Key-orange.svg)](#authentication)
 [![Agents: Pi, Pico & ESP32](https://img.shields.io/badge/agents-Pi%2C%20Pico%20%26%20ESP32-006400.svg)](#requirements)

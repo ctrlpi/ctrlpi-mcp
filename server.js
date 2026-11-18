@@ -730,12 +730,20 @@ function toolResult(result, err) {
              : { content: [{ type: "text", text: result }] };
 }
 
-// Each tool is { name, description, inputSchema, handler }. `inputSchema` is a plain
-// JSON Schema object (draft-07 style). `handler(args)` receives the call's `arguments`
+// Tool annotations. Read-only tools only look; destructive ones change pins, scripts, config or
+// the agent itself, so clients ask before calling them. Only an upgrade reaches past the LAN.
+const readOnlyAnnotations = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
+const destructiveAnnotations = { readOnlyHint: false, destructiveHint: true, openWorldHint: false };
+const downloadAnnotations = { readOnlyHint: false, destructiveHint: true, openWorldHint: true };
+
+// Each tool is { name, title, annotations, description, inputSchema, handler }. `inputSchema` is
+// a plain JSON Schema object (draft-07 style). `handler(args)` receives the call's `arguments`
 // object and returns an MCP tool result ({ content: [{ type: "text", text }] }).
 const TOOLS = [
   {
     name: "mcp_agents_list",
+    title: "List agents",
+    annotations: readOnlyAnnotations,
     description:
       "List configured agents (Pi, Pico or ESP32). Returns name, ip, port, online (live /hello probe), " +
       "type (pi/pico/esp32), version, has_default_key, and last_updated_at (UTC \"YYYY-MM-DD HH:MM:SS\", " +
@@ -772,6 +780,8 @@ const TOOLS = [
   },
   {
     name: "mcp_gpio_read",
+    title: "Read a pin",
+    annotations: readOnlyAnnotations,
     description: "Read a GPIO pin value on `agent` by number or name, or 'all' to read all pins.",
     inputSchema: {
       type: "object",
@@ -787,6 +797,8 @@ const TOOLS = [
   },
   {
     name: "mcp_gpio_write",
+    title: "Write a pin",
+    annotations: destructiveAnnotations,
     description:
       "Write a value to a GPIO pin on `agent` ('0', '1', 'on', 'off', or 'toggle'). Optional duration in " +
       "seconds, after which the pin reverts to its previous state. If the pin has a configured " +
@@ -811,6 +823,8 @@ const TOOLS = [
   },
   {
     name: "mcp_gpio_scan",
+    title: "Scan all pins",
+    annotations: readOnlyAnnotations,
     description:
       "Scan all hardware GPIO pins on `agent` and return each pin's level (the physical state), " +
       "type, pull resistor and name; a reversed pin also reports `value` (its logical state) and " +
@@ -828,6 +842,8 @@ const TOOLS = [
   },
   {
     name: "mcp_gpio_config",
+    title: "Configure a pin",
+    annotations: destructiveAnnotations,
     description:
       "Configure a GPIO pin on `agent` by number. type: input/output/vcc/gnd/remove. " +
       "init: 0/1/last. pullup: up/down/none (input only). max: max pulse duration in seconds " +
@@ -863,6 +879,8 @@ const TOOLS = [
   },
   {
     name: "mcp_gpio_watched",
+    title: "List watched pins",
+    annotations: readOnlyAnnotations,
     description: "List the GPIO pins that are currently being actively watched (the ones emitting hardware interrupts/webhooks).",
     inputSchema: {
       type: "object",
@@ -876,6 +894,8 @@ const TOOLS = [
   },
   {
     name: "mcp_sensor_config",
+    title: "Configure a sensor",
+    annotations: destructiveAnnotations,
     description:
       "Configure a named sensor on `agent`. A sensor runs a script and its output is the " +
       "reading. `script` is \"<script-file> [args...]\": a bare filename in the agent's " +
@@ -902,6 +922,8 @@ const TOOLS = [
   },
   {
     name: "mcp_sensor_read",
+    title: "Read sensors",
+    annotations: readOnlyAnnotations,
     description:
       "Read sensors on `agent`. With no `name`, reads every configured sensor and returns them " +
       "merged into one JSON object; with a `name`, reads just that sensor. Every reading is nested " +
@@ -922,6 +944,8 @@ const TOOLS = [
   },
   {
     name: "mcp_script_list",
+    title: "List scripts",
+    annotations: readOnlyAnnotations,
     description:
       "List the files in `agent`'s scripts/ folder (the folder sensors run from): `scripts` " +
       "([{name, size, modified}]) and `write`: \"enabled\", \"default_key\" (writes are refused " +
@@ -939,6 +963,8 @@ const TOOLS = [
   },
   {
     name: "mcp_script_read",
+    title: "Read a script",
+    annotations: readOnlyAnnotations,
     description: "Read one file from `agent`'s scripts/ folder. Returns {name, content}.",
     inputSchema: {
       type: "object",
@@ -952,6 +978,8 @@ const TOOLS = [
   },
   {
     name: "mcp_script_write",
+    title: "Write or delete a script",
+    annotations: destructiveAnnotations,
     description:
       "Create or overwrite a file in `agent`'s scripts/ folder with `content`, or delete it with " +
       "remove=true. `name` is a bare filename of up to 32 characters (letters, digits, . _ -, no " +
@@ -980,6 +1008,8 @@ const TOOLS = [
   },
   {
     name: "mcp_script_run",
+    title: "Run a script",
+    annotations: destructiveAnnotations,
     description:
       "Run a file from `agent`'s scripts/ folder and return {name, exit_code, output}. On a " +
       "Raspberry Pi a .py runs with the agent's Python and anything else with `sh`; output is its " +
@@ -1003,6 +1033,8 @@ const TOOLS = [
   },
   {
     name: "mcp_config_read",
+    title: "Read agent config",
+    annotations: readOnlyAnnotations,
     description:
       "Read `agent`'s global application configuration, grouped: `notifications` (`webhook` " +
       "+ `webhook_key`), `bridges` (matter/homekit/homebridge callbacks), `settings` (docs_enabled, logs_enabled, " +
@@ -1020,6 +1052,8 @@ const TOOLS = [
   },
   {
     name: "mcp_config_write",
+    title: "Update agent config",
+    annotations: destructiveAnnotations,
     description:
       "Update `agent`'s global configuration dynamically. These are the ungrouped (root) " +
       "field names; the agent routes each into its group (webhook_url -> notifications.webhook, " +
@@ -1059,6 +1093,8 @@ const TOOLS = [
   },
   {
     name: "mcp_config_load",
+    title: "Replace agent config",
+    annotations: destructiveAnnotations,
     description:
       "Load a full config onto `agent` from a dict (the agent saves a backup first). " +
       "Pass an empty dict {} to reset all settings on the agent keeping only its API key.",
@@ -1079,6 +1115,8 @@ const TOOLS = [
   },
   {
     name: "mcp_agent_restart",
+    title: "Restart or reboot an agent",
+    annotations: destructiveAnnotations,
     description:
       "Restart `agent`'s server process. Pass reboot=true to reboot the whole device instead " +
       "(a Pi, Pico or ESP32); an agent running on a Mac ignores it and restarts the process.",
@@ -1094,6 +1132,8 @@ const TOOLS = [
   },
   {
     name: "mcp_agent_upgrade",
+    title: "Upgrade an agent",
+    annotations: downloadAnnotations,
     description:
       "Upgrade `agent` to the latest release, then restart it. A Pi runs `install.sh --upgrade` " +
       "(re-downloads the release files and reinstalls dependencies); a Pico or ESP32 downloads " +
@@ -1110,6 +1150,8 @@ const TOOLS = [
   },
   {
     name: "mcp_agent_logs",
+    title: "Read agent log",
+    annotations: readOnlyAnnotations,
     description: "Read the last 50 lines of `agent`'s server log file.",
     inputSchema: {
       type: "object",
@@ -1151,7 +1193,7 @@ async function dispatch(msg) {
       case "ping":
         return ok({});
       case "tools/list":
-        return ok({ tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) });
+        return ok({ tools: TOOLS.map(({ name, title, description, inputSchema, annotations }) => ({ name, title, description, inputSchema, annotations })) });
       case "tools/call": {
         const tool = TOOLS.find((t) => t.name === params.name);
         if (!tool) return isRequest ? fail(-32602, `Unknown tool: ${params.name}`) : null;

@@ -240,6 +240,23 @@ async function runTestSet(client) {
     }
   });
 
+  test('every tool has a title and is either read-only or destructive', async () => {
+    const tools = await client.listTools();
+    assert.equal(tools.length, 18);
+    for (const t of tools) {
+      assert.ok(t.title, `${t.name} title`);
+      const a = t.annotations || {};
+      assert.equal(typeof a.readOnlyHint, 'boolean', `${t.name} readOnlyHint`);
+      assert.equal(a.destructiveHint, !a.readOnlyHint, `${t.name} destructiveHint`);
+      assert.equal(a.openWorldHint, t.name === 'mcp_agent_upgrade', `${t.name} openWorldHint`);
+    }
+    const readOnly = tools.filter(t => t.annotations.readOnlyHint).map(t => t.name).sort();
+    assert.deepEqual(readOnly, [
+      'mcp_agent_logs', 'mcp_agents_list', 'mcp_config_read', 'mcp_gpio_read', 'mcp_gpio_scan',
+      'mcp_gpio_watched', 'mcp_script_list', 'mcp_script_read', 'mcp_sensor_read',
+    ]);
+  });
+
   test('agents list', async () => {
     const res = await client.callTool('mcp_agents_list', {});
     const data = parseToolResult(res);
