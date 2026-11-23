@@ -71,7 +71,7 @@ const HOMEBRIDGE_SHARED_FILE = "/var/lib/homebridge/ctrlpi-agents-config.json";
 const DEFAULT_PORT = 8314; // default REST port for agents that don't specify one
 const DEFAULT_AGENT_KEY = "your-secret-key"; // the agents' shipped default Api-Key
 const DEFAULT_HTTP_KEY = "your-mcp-key"; // this server's own default key, gating --http mode
-const MAX_BODY_BYTES = 64 * 1024; // largest --http request body, else 413 (a full Pi config is under 5 KB)
+const MAX_BODY_BYTES = 64 * 1024; // largest --mcp http request body, else 413 (a full Pi config is under 5 KB)
 const HTTP_TIMEOUT = 20000; // per-call timeout when proxying to an agent (ms)
 const PROBE_TIMEOUT = 3000; // shorter timeout for liveness/type probes in agents_list (ms)
 const SWEEP_MINUTES = 60;   // default minutes between background LAN sweeps (--rescan <n>)
@@ -317,7 +317,7 @@ async function searchAndAddAgents(rotateKeys, found = null) {
   config.agents = agents;
   saveConfig(config);
   note(`Saved ${SHARED_FILE} with ${agents.length} agent(s).`);
-  note(`HTTP-mode key (only used by --http) defaults to '${DEFAULT_HTTP_KEY}' - change mcp.api_key in ${CONFIG_FILE} for a real secret.`);
+  note(`HTTP-mode key (only used by --mcp http) defaults to '${DEFAULT_HTTP_KEY}' - change mcp.api_key in ${CONFIG_FILE} for a real secret.`);
   note("");
 }
 
@@ -564,7 +564,7 @@ function agents() {
   return loadConfig().agents || [];
 }
 
-// This server's own key, gating --http mode.
+// This server's own key, gating --mcp http mode.
 function httpKey() {
   const own = loadOwn();
   return (own.mcp && own.mcp.api_key) || DEFAULT_HTTP_KEY;
@@ -848,7 +848,11 @@ const TOOLS = [
       "Configure a GPIO pin on `agent` by number. type: input/output/vcc/gnd/remove. " +
       "init: 0/1/last. pullup: up/down/none (input only). max: max pulse duration in seconds " +
       "(output only). reversed: active-low logic (input/output only). watched: trigger webhook " +
-      "on state change (logged on the agent if no notifications.webhook is configured).",
+      "on state change (logged on the agent if no notifications.webhook is configured). " +
+      "script: a script from the agent's scripts folder to run when the pin's value changes " +
+      "(input/output only), \"[on:|off:]<file> [args]\": \"on:\" runs it only when the pin goes to 1, " +
+      "\"off:\" only when it goes to 0 (no value is passed), and with no prefix it runs on both and " +
+      "gets 1 or 0 as its last argument; an empty string clears it. Needs agent 0.9.50 or later.",
     inputSchema: {
       type: "object",
       properties: {
@@ -861,10 +865,11 @@ const TOOLS = [
         max: { type: "number" },
         reversed: { type: "boolean" },
         watched: { type: "boolean" },
+        script: { type: "string" },
       },
       required: ["agent", "gpio"],
     },
-    handler: async ({ agent, gpio, name, type, init, pullup, max, reversed, watched }) => {
+    handler: async ({ agent, gpio, name, type, init, pullup, max, reversed, watched, script }) => {
       const body = {};
       if (name !== undefined) body.name = asText(name);
       if (type !== undefined) body.type = type;
@@ -873,6 +878,7 @@ const TOOLS = [
       if (max !== undefined) body.max = max;
       if (reversed !== undefined) body.reversed = reversed;
       if (watched !== undefined) body.watched = watched;
+      if (script !== undefined) body.script = asText(script);
       const [result, err] = await callAgent(agent, "POST", `/gpio/config/${gpio}`, body);
       return toolResult(result, err);
     },
@@ -900,8 +906,9 @@ const TOOLS = [
       "Configure a named sensor on `agent`. A sensor runs a script and its output is the " +
       "reading. `script` is \"<script-file> [args...]\": a bare filename in the agent's " +
       "scripts/ folder (no paths - that folder is the only allowed location), with " +
-      "letters/digits-only arguments. On a Raspberry Pi it is a shell script run with `sh`; " +
-      "on a Pico or ESP32 a .py file the agent execs in-process. Pass remove=true to delete the sensor.",
+      "letters/digits-only arguments. On a Raspberry Pi a .py runs with the agent's Python and " +
+      "anything else with `sh`; on a Pico or ESP32 the .py file is exec'd in-process and its " +
+      "read(*args) or `result` is the reading. Pass remove=true to delete the sensor.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1036,10 +1043,13 @@ const TOOLS = [
     title: "Read agent config",
     annotations: readOnlyAnnotations,
     description:
-      "Read `agent`'s global application configuration, grouped: `notifications` (`webhook` " +
+      "Read `agent`'s global application configuration (`agent` is a name from mcp_agents_list), " +
+      "grouped: `notifications` (`webhook` " +
       "+ `webhook_key`), `bridges` (matter/homekit/homebridge callbacks), `settings` (docs_enabled, logs_enabled, " +
       "log_days), `sensors`, and configured pins (`gpios`). The `agent` block (platform, os, " +
-      "ip, cpu_temperature, version) is computed live on every read and is not stored.",
+      "ip, cpu_temperature, version) is computed live on every read and is not stored. " +
+      "Change the name, key, webhook and settings with mcp_config_write; mcp_config_load replaces " +
+      "the whole config.",
     inputSchema: {
       type: "object",
       properties: { agent: { type: "string" } },
@@ -1152,7 +1162,10 @@ const TOOLS = [
     name: "mcp_agent_logs",
     title: "Read agent log",
     annotations: readOnlyAnnotations,
-    description: "Read the last 50 lines of `agent`'s server log file.",
+    description:
+      "Read the last 50 lines of `agent`'s server log (30 on a Pico or ESP32; `agent` is a name from " +
+      "mcp_agents_list). " +
+      "Use it to see why a call to the agent failed.",
     inputSchema: {
       type: "object",
       properties: { agent: { type: "string" } },
@@ -1287,11 +1300,74 @@ function sendJson(res, status, obj, extraHeaders = {}) {
   res.end(body);
 }
 
+// GET /hello: no key, so ctrlpi-remote can find this server on the LAN. `key` says whether a
+// key is set (true) or the server is still on the default and can be claimed (false).
+function handleHello(req, res) {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.writeHead(405, { Allow: "GET, HEAD" }).end();
+    return;
+  }
+  sendJson(res, 200, { service: "ctrlpi-mcp", key: httpKey() !== DEFAULT_HTTP_KEY });
+}
+
+// A new key: 1-128 printable ASCII characters, no spaces, never the shipped default.
+const NEW_KEY = /^[\x21-\x7e]{1,128}$/;
+const REMOTE_CONFIG_MAX_BYTES = 4 * 1024;
+
+// POST /remote-config {"api_key": "<new>"}: changes this server's HTTP key over the network.
+// Needs the current key in Api-Key (never claims one: that is /mcp's job).
+function handleRemoteConfig(req, res) {
+  if (req.method !== "POST") {
+    res.writeHead(405, { Allow: "POST" }).end();
+    return;
+  }
+  if (!originAllowed(req.headers.origin) || !keysMatch(req.headers["api-key"], httpKey())) {
+    console.error(`[SECURITY] /remote-config refused from ${req.socket.remoteAddress}: wrong or missing Api-Key`);
+    sendJson(res, 403, { error: "Invalid or missing Api-Key header" });
+    return;
+  }
+  const chunks = [];
+  let size = 0;
+  req.on("data", (chunk) => {
+    size += chunk.length;
+    if (size > REMOTE_CONFIG_MAX_BYTES) {
+      sendJson(res, 413, { error: `Request body exceeds ${REMOTE_CONFIG_MAX_BYTES} bytes` });
+      req.destroy();
+      return;
+    }
+    chunks.push(chunk);
+  });
+  req.on("end", () => {
+    if (size > REMOTE_CONFIG_MAX_BYTES) return;
+    let body;
+    try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { body = null; }
+    const key = body && typeof body === "object" ? body.api_key : undefined;
+    if (typeof key !== "string" || !NEW_KEY.test(key) || key === DEFAULT_HTTP_KEY) {
+      sendJson(res, 400, { error: "api_key must be 1-128 printable characters without spaces, and not the default key" });
+      return;
+    }
+    const own = loadOwn();
+    const keySet = nowStamp();
+    own.mcp = { ...(own.mcp || {}), api_key: key, key_set: keySet };
+    try {
+      fs.writeFileSync(CONFIG_FILE, JSON.stringify(own, null, 4));
+    } catch (e) {
+      console.error(`[SECURITY] Could not save the new mcp.api_key to ${CONFIG_FILE} (${e.message}) - the old key stays.`);
+      sendJson(res, 500, { error: "Could not save the new key" });
+      return;
+    }
+    console.error(`Api-Key changed through /remote-config and saved to ${CONFIG_FILE}.`);
+    sendJson(res, 200, { key_set: keySet });
+  });
+}
+
 function runHttp(host, port) {
   // MCP Streamable HTTP at POST /mcp. We don't push server-initiated messages, so no SSE.
   // Stateful handshake is mocked: any session id (or none) is accepted.
   const server = http.createServer((req, res) => {
     const pathname = new URL(req.url, "http://localhost").pathname;
+    if (pathname === "/hello") return handleHello(req, res);
+    if (pathname === "/remote-config") return handleRemoteConfig(req, res);
     if (pathname !== "/mcp" && pathname !== "/mcp/") {
       res.writeHead(404).end();
       return;
@@ -1396,14 +1472,17 @@ async function main() {
   const args = process.argv.slice(2);
   // Read every flag first, so a usage error exits before anything starts.
   const rescanMinutes = intFlag("--rescan", SWEEP_MINUTES, 0, 10080);
-  const httpMode = args.includes("--http");
-  // --http binds to all interfaces (LAN) by default; --local restricts it to loopback.
-  // An explicit --host <ip> wins over both.
-  const host = flagValue("--host") ?? (args.includes("--local") ? "127.0.0.1" : "0.0.0.0");
+  const transport = flagValue("--mcp") ?? "stdio";
+  if (!["stdio", "http"].includes(transport)) usageError(`--mcp takes stdio or http, not '${transport}'`);
+  const httpMode = transport === "http";
+  // --local was removed; ignoring it would silently bind to the LAN, so it is refused.
+  if (args.includes("--local")) usageError("--local was removed: use --host 127.0.0.1");
+  // --mcp http binds to all interfaces (LAN) unless --host <ip> says otherwise.
+  const host = flagValue("--host") ?? "0.0.0.0";
   const port = intFlag("--port", 8315, 1, 65535);
-  // Only --http has a console anyone reads; under stdio the client owns the pipe, so the
+  // Only HTTP mode has a console anyone reads; under stdio the client owns the pipe, so the
   // setup narration is suppressed there (security warnings still print, always).
-  SETUP_QUIET = !args.includes("--http");
+  SETUP_QUIET = !httpMode;
 
   // The sweep runs in the background, so the transport answers at once; a tool that needs
   // an agent the sweep has not filed yet waits for it (see callAgent and mcp_agents_list).

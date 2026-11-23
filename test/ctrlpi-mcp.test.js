@@ -83,7 +83,7 @@ class HttpClient {
   // Resolves once the server listens. Probes a non-/mcp path, which needs no key, so the
   // probe can never claim the HTTP key on a fresh config.
   async listen() {
-    this.proc = spawn('node', [SERVER_SCRIPT, '--http', '--port', String(this.port), '--config', this.config, ...this.args], { stdio: 'inherit', env: { ...process.env, ...this.env } });
+    this.proc = spawn('node', [SERVER_SCRIPT, '--mcp', 'http', '--port', String(this.port), '--config', this.config, ...this.args], { stdio: 'inherit', env: { ...process.env, ...this.env } });
     const start = Date.now();
     while (Date.now() - start < 5000) {
       try {
@@ -296,6 +296,20 @@ async function runTestSet(client) {
       const cfgRes = await client.callTool('mcp_config_read', { agent });
       const cfg = parseToolResult(cfgRes);
       assert.ok(cfg.gpios['26']);
+    });
+
+    test(`[${agent}] gpio config sends a pin script as text, and an empty one to clear it`, async () => {
+      let res = await client.callTool('mcp_gpio_config', { agent, gpio: '26', type: 'output', script: 'on: relay.sh fast' });
+      assert.doesNotMatch(String(parseToolResult(res)), /error/i);
+      let cfg = parseToolResult(await client.callTool('mcp_config_read', { agent }));
+      assert.strictEqual(cfg.gpios['26'].script, 'on: relay.sh fast');
+      res = await client.callTool('mcp_gpio_config', { agent, gpio: '26', type: 'output', script: 5 });
+      cfg = parseToolResult(await client.callTool('mcp_config_read', { agent }));
+      assert.strictEqual(cfg.gpios['26'].script, '5');
+      res = await client.callTool('mcp_gpio_config', { agent, gpio: '26', type: 'output', script: '' });
+      cfg = parseToolResult(await client.callTool('mcp_config_read', { agent }));
+      assert.strictEqual(cfg.gpios['26'].script, '');
+      await client.callTool('mcp_gpio_config', { agent, gpio: '26', type: 'remove' });
     });
 
     test(`[${agent}] gpio read/write`, async () => {
@@ -549,6 +563,103 @@ describe('HTTP auth', () => {
   });
 });
 
+describe('/hello and /remote-config', () => {
+  const dir = path.join(__dirname, 'tmp-remote');
+  const port = HTTP_PORT + 6;
+  const server = new HttpClient({ port, config: dir });
+  const base = `http://127.0.0.1:${port}`;
+  const hello = async () => (await fetch(`${base}/hello`)).json();
+  const ping = (key) => fetch(`${base}/mcp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Api-Key': key },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }),
+  });
+  const change = (key, body, headers = {}) => fetch(`${base}/remote-config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(key ? { 'Api-Key': key } : {}), ...headers },
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+  });
+  const saved = () => JSON.parse(fs.readFileSync(path.join(dir, 'mcp-config.json'), 'utf8')).mcp;
+
+  before(async () => {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'agents-config.json'), JSON.stringify({ agents: [] }));
+    await server.listen();
+  });
+
+  after(() => {
+    server.stop();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('/hello needs no key and says the key is not set yet', async () => {
+    const res = await fetch(`${base}/hello`);
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { service: 'ctrlpi-mcp', key: false });
+  });
+
+  test('/hello answers GET only', async () => {
+    assert.equal((await fetch(`${base}/hello`, { method: 'POST' })).status, 405);
+  });
+
+  test('/hello does not claim the key', async () => {
+    await fetch(`${base}/hello`, { headers: { 'Api-Key': 'not-a-claim' } });
+    assert.equal((await hello()).key, false);
+    assert.equal(fs.existsSync(path.join(dir, 'mcp-config.json')), false);
+  });
+
+  test('/remote-config refuses a missing or wrong key, and never claims one', async () => {
+    assert.equal((await change(null, { api_key: 'new-key-1' })).status, 403);
+    assert.equal((await change('some-other-key', { api_key: 'new-key-1' })).status, 403);
+    assert.equal((await hello()).key, false);
+  });
+
+  test('/remote-config refuses another browser origin', async () => {
+    const res = await change('your-mcp-key', { api_key: 'new-key-1' }, { Origin: 'http://evil.example' });
+    assert.equal(res.status, 403);
+  });
+
+  test('/remote-config refuses a bad new key with 400', async () => {
+    for (const body of [{}, { api_key: '' }, { api_key: 'your-mcp-key' }, { api_key: 'has space' },
+                        { api_key: 'x'.repeat(129) }, { api_key: 4242 }, 'not json']) {
+      assert.equal((await change('your-mcp-key', body)).status, 400, JSON.stringify(body));
+    }
+  });
+
+  test('/remote-config answers POST only', async () => {
+    assert.equal((await fetch(`${base}/remote-config`, { headers: { 'Api-Key': 'your-mcp-key' } })).status, 405);
+  });
+
+  test('/remote-config with the default key sets a new one', async () => {
+    const res = await change('your-mcp-key', { api_key: 'new-key-1' });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.match(body.key_set, STAMP);
+    assert.equal(saved().api_key, 'new-key-1');
+    assert.equal(saved().key_set, body.key_set);
+    assert.equal((await hello()).key, true);
+  });
+
+  test('after a change only the new key reaches /mcp', async () => {
+    assert.equal((await ping('your-mcp-key')).status, 403);
+    assert.equal((await ping('new-key-1')).status, 200);
+  });
+
+  test('/remote-config with the current key changes it again', async () => {
+    assert.equal((await change('your-mcp-key', { api_key: 'new-key-2' })).status, 403);
+    assert.equal((await change('new-key-1', { api_key: 'new-key-2' })).status, 200);
+    assert.equal(saved().api_key, 'new-key-2');
+    assert.equal((await ping('new-key-1')).status, 403);
+    assert.equal((await ping('new-key-2')).status, 200);
+  });
+
+  test('/remote-config over 4 KB is 413', async () => {
+    assert.equal((await change('new-key-2', { api_key: 'k', pad: 'x'.repeat(5000) })).status, 413);
+    assert.equal(saved().api_key, 'new-key-2');
+  });
+});
+
 describe('Discovery', () => {
   const dir = path.join(__dirname, 'tmp-discovery');
   const port = HTTP_PORT + 2;
@@ -645,10 +756,10 @@ describe('Startup and shutdown', () => {
   }
 
   test('a flag without a valid value exits with code 2', async () => {
-    let r = await runServer(['--http', '--port']);
+    let r = await runServer(['--mcp', 'http', '--port']);
     assert.equal(r.code, 2);
     assert.match(r.stderr, /--port needs a value/);
-    r = await runServer(['--http', '--port', 'abc']);
+    r = await runServer(['--mcp', 'http', '--port', 'abc']);
     assert.equal(r.code, 2);
     assert.match(r.stderr, /--port must be a whole number/);
     r = await runServer(['--rescan', '-1']);
@@ -660,7 +771,7 @@ describe('Startup and shutdown', () => {
     const blocker = require('node:http').createServer();
     await new Promise(resolve => blocker.listen(busyPort, '0.0.0.0', resolve));
     try {
-      const r = await runServer(['--http', '--port', String(busyPort)]);
+      const r = await runServer(['--mcp', 'http', '--port', String(busyPort)]);
       assert.equal(r.code, 1);
       assert.match(r.stderr, /^ctrlpi-mcp: cannot listen on 0\.0\.0\.0:\d+: port \d+ is already in use$/m);
     } finally {

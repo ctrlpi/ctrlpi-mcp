@@ -1,6 +1,6 @@
 {
   "name": "ctrlpi-mcp",
-  "version": "0.9.41",
+  "version": "0.9.50",
   "mcpName": "io.github.ctrlpi/ctrlpi-mcp",
   "description": "An MCP (Model Context Protocol) server that lets an AI agent (e.g. Claude Desktop) control one or more GPIO agents (pi-gpio-api on a Raspberry Pi, pico-gpio-api on a Pico W or Pico 2 W, esp32-gpio-api on an ESP32) by calling their REST API over HTTP.",
   "main": "server.js",

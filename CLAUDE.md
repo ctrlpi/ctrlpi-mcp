@@ -43,9 +43,9 @@ Requires Node.js 20+ (uses the built-in `fetch`). No dependencies, nothing to in
 
 ```bash
 npm start                          # stdio MCP server (default)
-npm start -- --http                # Streamable HTTP at /mcp, bound to 0.0.0.0 (all interfaces), default port 8315
-npm start -- --http --local        # bound to loopback only (127.0.0.1)
-npm start -- --http --host 0.0.0.0 --port 8315
+npm start -- --mcp http            # Streamable HTTP at /mcp, bound to 0.0.0.0 (all interfaces), default port 8315
+npm start -- --mcp http --host 127.0.0.1   # bound to loopback only
+npm start -- --mcp http --host 0.0.0.0 --port 8315
 ```
 
 A flag without a valid value (`--port`, `--host`, `--rescan`, `--config`) exits with code 2 and a message (`flagValue()` / `intFlag()`).
@@ -55,16 +55,15 @@ A flag without a valid value (`--port`, `--host`, `--rescan`, `--config`) exits 
 | Flag | Applies to | Effect |
 |---|---|---|
 | _(none)_ | - | Runs the stdio MCP server. |
-| `--http` | transport | Runs Streamable HTTP transport at `POST /mcp` instead of stdio. |
-| `--local` | `--http` | Restricts HTTP bind to loopback (`127.0.0.1`). |
-| `--host <ip>` | `--http` | Explicit bind address. |
-| `--port <n>` | `--http` | HTTP listen port (default `8315`). |
+| `--mcp stdio\|http` | transport | `http` runs Streamable HTTP transport at `POST /mcp` instead of stdio (the default). The old `--http` is ignored; the old `--local` exits with code 2 (use `--host 127.0.0.1`). |
+| `--host <ip>` | `--mcp http` | Explicit bind address (default `0.0.0.0`). |
+| `--port <n>` | `--mcp http` | HTTP listen port (default `8315`). |
 | `--no-scan` | setup | Disables the automatic LAN sweeps (startup and hourly). A first run with no `agents-config.json` still sweeps once; `mcp_agents_list(rescan=true)` still sweeps. |
 | `--rescan <n>` | setup | Minutes between automatic sweeps (default 60); `0` turns them off like `--no-scan`. |
 | `--rotate-keys` | setup | Re-keys an agent still on the shipped default key. |
 | `--config <folder>` | config | Keep config files in this folder instead of `~/.ctrlpi/`. |
 
-HTTP mode requires `Api-Key` header matching `mcp.api_key` from `mcp-config.json`. Stdio mode needs no auth. Only `/mcp` (or `/mcp/`) is served; a request carrying an `Origin` header is accepted only from a `localhost` or IP-address origin (`originAllowed()`, against DNS rebinding).
+HTTP mode requires `Api-Key` header matching `mcp.api_key` from `mcp-config.json`. Stdio mode needs no auth. Besides `/mcp` (or `/mcp/`), HTTP mode serves `GET /hello` (no key: `{"service": "ctrlpi-mcp", "key": <true once a key other than the default is set>}`, how `ctrlpi-remote` finds it) and `POST /remote-config` (`Api-Key: <current>`, `{"api_key": "<new>"}`: `200 {key_set}`, `403` wrong key or foreign origin, `400` empty, default, over 128 or not printable ASCII, `405`, `413` over 4 KB, `500` not saved; it never claims a key). Every other path is a `404`; a request carrying an `Origin` header is accepted only from a `localhost` or IP-address origin (`originAllowed()`, against DNS rebinding).
 
 ## Architecture
 

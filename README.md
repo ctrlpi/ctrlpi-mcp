@@ -1,7 +1,7 @@
 # ctrlPi MCP
 
 [![Platform: Cross-Platform](https://img.shields.io/badge/platform-Cross--Platform-006400.svg)](#requirements)
-[![Version 0.9.41](https://img.shields.io/badge/version-0.9.41-blue.svg)](https://github.com/ctrlpi/ctrlpi-mcp/tags)
+[![Version 0.9.50](https://img.shields.io/badge/version-0.9.50-blue.svg)](https://github.com/ctrlpi/ctrlpi-mcp/tags)
 [![Node 20+](https://img.shields.io/badge/node-20%2B-blue.svg)](https://nodejs.org/)
 [![Auth: Api-Key](https://img.shields.io/badge/auth-Api--Key-orange.svg)](#authentication)
 [![Agents: Pi, Pico & ESP32](https://img.shields.io/badge/agents-Pi%2C%20Pico%20%26%20ESP32-006400.svg)](#requirements)
@@ -19,7 +19,7 @@ Runs on a Mac, a Raspberry Pi, or any Linux box, secured with API key authentica
 This app acts as a pure API proxy. It is a thin MCP front-end: every tool targets an agent and proxies the request to that agent's REST endpoints, forwarding that agent's own `Api-Key`.
 
 ```
-[MCP client: Claude Desktop / mcp-remote]
+[MCP client: Claude Desktop / ctrlpi-remote]
         │  MCP (STDIO or Streamable HTTP /mcp)
         ▼
    [ctrlpi-mcp]
@@ -36,26 +36,13 @@ You also need at least one GPIO agent reachable on your LAN, a [`pi-gpio-api`](h
 
 ## Quick start, nothing to install
 
-Let Claude Desktop fetch and start the app itself, in one step with `npx`, which downloads the published package and runs it without installing anything.
+In Claude Desktop, open **Plugins** in the sidebar, choose **Add > Add marketplace** and enter `ctrlpi/claude-plugins`. The marketplace appears as `ctrlpi`; install `ctrlpi-mcp` from it.
 
-Open Claude Desktop's **Settings → Developer → Edit Config**, which opens `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS or the equivalent file on Windows or Linux, and add the server under `mcpServers`:
+Ask it what agents you have and it will call `mcp_agents_list`; from then on it can read pins, drive outputs, and configure the agents in plain conversation.
 
-```json
-{
-  "mcpServers": {
-    "ctrlpi": {
-      "command": "npx",
-      "args": ["-y", "ctrlpi-mcp"]
-    }
-  }
-}
-```
+The first launch sweeps your local /24 and writes every agent it finds to `~/.ctrlpi/agents-config.json`. By default, newly discovered agents are recorded using their shipped default keys. (When you run the server yourself, `--rotate-keys` generates and applies a new random key to each one; see [Run flags](#run-flags).)
 
-Restart Claude Desktop and the tools are there. Ask it what agents you have and it will call `mcp_agents_list`; from then on it can read pins, drive outputs, and configure the agents in plain conversation.
-
-The first launch sweeps your local /24 and writes every agent it finds to `~/.ctrlpi/agents-config.json`. By default, newly discovered agents are recorded using their shipped default keys. (You can append `--rotate-keys` to the `args` array to automatically generate and apply a new random key to each one.)
-
-The sweep repeats on every launch and every hour after it, which is what picks up an agent switched on later and repairs the address of one that took a new DHCP lease (a Pico nearly always does on reset). Add `--no-scan` to turn that off once your setup has settled, and take it out again the day something moves.
+The sweep repeats on every launch and every hour after it, which is what picks up an agent switched on later and repairs the address of one that took a new DHCP lease (a Pico nearly always does on reset). When you run the server yourself, `--no-scan` turns that off once your setup has settled; take it out again the day something moves.
 
 ## Install
 
@@ -64,7 +51,7 @@ Install it properly when you want to own the process, or when **the bridge runs 
 ```bash
 npm install ctrlpi-mcp
 cd node_modules/ctrlpi-mcp
-npm start -- --http
+npm start -- --mcp http
 ```
 
 It listens on port **8315** on every interface, so any client on the LAN reaches it at `http://<host>:8315/mcp`. Set `mcp.api_key` before you expose it: HTTP mode is key-gated, and the first caller to connect with a key of its own claims it (see [Authentication](#authentication)). `--local` keeps the listener on loopback instead.
@@ -76,7 +63,7 @@ HTTP mode is intended for continuous background execution; a stdio server is sta
 ```bash
 npm install -g pm2       # if you don't already have it
 pm2 startup              # no need to repeat if already done
-pm2 start server.js --name ctrlpi-mcp -- --http
+pm2 start server.js --name ctrlpi-mcp -- --mcp http
 pm2 save
 ```
 
@@ -84,11 +71,11 @@ pm2 save
 
 ## Run
 
-Run it with `npm start` from the installation folder (`node_modules/ctrlpi-mcp`), passing flags after `--` (`npm start -- --http`), or with `npx -y ctrlpi-mcp` and no install at all. The flags below are identical either way, and one given without a valid value (say `--port` with no number) stops the server with an error.
+Run it with `npm start` from the installation folder (`node_modules/ctrlpi-mcp`), passing flags after `--` (`npm start -- --mcp http`), or with `npx -y ctrlpi-mcp` and no install at all. The flags below are identical either way, and one given without a valid value (say `--port` with no number) stops the server with an error.
 
 **stdio** is the default and communicates directly over standard input/output: the transport is the process's own stdin and stdout, and the client that launched it owns both. Everything the server would print goes to stderr instead, because stdout is the protocol channel. This is the mode Claude Desktop uses.
 
-**`--http`** serves Streamable HTTP at `POST /mcp` on port **8315**, one above the agents' own 8314, for a client that cannot launch a local process or sits on another machine. It is a server: it stays up, holds a port, and requires `mcp.api_key` from every caller (see [Authentication](#authentication)).
+**`--mcp http`** serves Streamable HTTP at `POST /mcp` on port **8315**, one above the agents' own 8314, for a client that cannot launch a local process or sits on another machine. It is a server: it stays up, holds a port, and requires `mcp.api_key` from every caller (see [Authentication](#authentication)).
 
 No environment variables are needed: everything is set with the flags below or in the config files.
 
@@ -97,9 +84,8 @@ No environment variables are needed: everything is set with the flags below or i
 | Flag&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Effect |
 |:---------------------|:-------|
 | *(none)*             | Runs the stdio MCP server, the default transport. |
-| `--http`             | Serves Streamable HTTP at `POST /mcp` instead, on all interfaces (`0.0.0.0`). |
-| `--local`            | Binds to loopback (`127.0.0.1`) only. |
-| `--host <ip>`        | Explicit bind address; wins over `--local`. |
+| `--mcp stdio\|http`  | `http` serves Streamable HTTP at `POST /mcp` instead of stdio, on all interfaces (`0.0.0.0`). |
+| `--host <ip>`        | Explicit bind address, for example `127.0.0.1` for loopback only. |
 | `--port <n>`         | Listen port (default `8315`). |
 | `--rotate-keys`      | Replace the shipped default key on any agent still using it with a random one, and record the date under `key_set`. |
 | `--no-scan`          | Turn off the automatic LAN sweeps, at startup and hourly. A first run with no config still sweeps once, since there would be no agents at all otherwise. An explicit `mcp_agents_list(rescan=true)` still sweeps. |
@@ -108,35 +94,37 @@ No environment variables are needed: everything is set with the flags below or i
 
 ### Connect from Claude Desktop
 
-For the ordinary case, where Claude Desktop launches the server itself over stdio, use the `npx` form under [Quick start](#quick-start-nothing-to-install). Substitute `"command": "node", "args": ["<path>/node_modules/ctrlpi-mcp/server.js"]` if you installed it instead.
+For the ordinary case, where Claude Desktop launches the server itself over stdio, install the plugin as in [Quick start](#quick-start-nothing-to-install). If you installed it yourself instead, add it to Claude Desktop's config under `mcpServers` with `"command": "node", "args": ["<path>/node_modules/ctrlpi-mcp/server.js"]`.
 
-To reach a bridge over the network, start it in HTTP mode first (`npm start -- --http`), then connect through [`mcp-remote`](https://www.npmjs.com/package/mcp-remote), passing `mcp.api_key` (`your-mcp-key` by default, see [Configuration](#configuration)):
+To use ctrlpi-mcp on a remote computer or Raspberry Pi, start it there in HTTP mode:
+
+```sh
+npx ctrlpi-mcp --mcp http
+```
+
+On the desktop, install `ctrlpi-mcp-remote` from the `ctrlpi/claude-plugins` marketplace, or add [ctrlpi-remote](https://github.com/ctrlpi/ctrlpi-remote) to any MCP client:
 
 ```json
 {
   "mcpServers": {
-    "ctrlpi": {
-      "command": "npx",
-      "args": [
-        "-y", "mcp-remote", "http://<host>:8315/mcp", "--allow-http",
-        "--header", "Api-Key:your-mcp-key"
-      ]
-    }
+    "ctrlpi-mcp-remote": { "command": "npx", "args": ["-y", "ctrlpi-remote", "ctrlpi-mcp"] }
   }
 }
 ```
 
-`--allow-http` permits the connection over a trusted local network.
+ctrlpi-remote finds ctrlpi-mcp on your network and claims its key the first time. Nothing else to set.
 
-Pick one of the two, not both. Restart Claude Desktop after saving either.
+Use the local plugin or the remote one, not both: they would control the same agents. Restart Claude Desktop after saving.
+
+You can also use it with [mcp-remote](https://github.com/geelen/mcp-remote) from any client that only speaks stdio: `npx -y mcp-remote http://<host>:8315/mcp --allow-http --header "Api-Key:<your-mcp-key>"`. Unlike ctrlpi-remote, it does not find the server or claim its key for you.
 
 ### Connect from Cursor
 
-Cursor takes the same JSON as Claude Desktop, for either form above. Put it in `~/.cursor/mcp.json`, or in `.cursor/mcp.json` inside a project.
+Add the server under `mcpServers` in `~/.cursor/mcp.json` (or `.cursor/mcp.json` inside a project), with `npx` as the command and `-y ctrlpi-mcp` as its arguments; for a bridge in HTTP mode on another machine, use the `ctrlpi-remote` JSON above.
 
 ### Connect from Claude Code
 
-Claude Code speaks both transports directly, so no `mcp-remote` hop is needed. Pick one.
+Claude Code speaks both transports directly, so it can also skip `ctrlpi-remote`. Pick one.
 
 **stdio**, where Claude Code launches its own copy:
 
@@ -144,7 +132,7 @@ Claude Code speaks both transports directly, so no `mcp-remote` hop is needed. P
 claude mcp add ctrlpi -- npx -y ctrlpi-mcp
 ```
 
-**Streamable HTTP**, attaching to a bridge already running with `--http`:
+**Streamable HTTP**, attaching to a bridge already running with `--mcp http`:
 
 ```bash
 claude mcp add ctrlpi --transport http http://<host>:8315/mcp --header "Api-Key: your-mcp-key"
@@ -156,7 +144,7 @@ Two independent keys are in play, and they are never the same one:
 
 | Key | Where it lives | What it does |
 |---|---|---|
-| `mcp.api_key` | `~/.ctrlpi/mcp-config.json` | Gates **this server** in `--http` mode. Sent as an `Api-Key` header, the only form accepted. Starts as `your-mcp-key` and is claimed on first use, below. |
+| `mcp.api_key` | `~/.ctrlpi/mcp-config.json` | Gates **this server** in `--mcp http` mode. Sent as an `Api-Key` header, the only form accepted. Starts as `your-mcp-key` and is claimed on first use, below. |
 | `agents[].api_key` | `~/.ctrlpi/agents-config.json` | Each **agent's** own key, forwarded on every proxied REST call. Never sent to an MCP client. |
 
 **stdio mode needs no key at all**: the transport is the process's own stdin/stdout, so whoever launched it already has that access.
@@ -165,7 +153,9 @@ Two independent keys are in play, and they are never the same one:
 
 While `mcp.api_key` is still the shipped `your-mcp-key`, the **first caller to present a different key claims it**: that key is written to `mcp-config.json` with the date under `mcp.key_set`, and from that moment it is the only key accepted. Just connect with the secret you want to use and it becomes the secret.
 
-This is trust on first use, so the window is exactly as safe as your network during it: whoever reaches the port first sets the key. Set `mcp.api_key` by hand to skip the window, and keep `--http` off an untrusted LAN until a key is in place. Once claimed, the key only ever changes by editing the file.
+This is trust on first use, so the window is exactly as safe as your network during it: whoever reaches the port first sets the key. Set `mcp.api_key` by hand to skip the window, and keep `--http` off an untrusted LAN until a key is in place. Once claimed, the key changes only by editing the file, or through `POST /remote-config` (below).
+
+`GET /hello` (no key) answers `{"service": "ctrlpi-mcp", "key": true|false}`; `key` is false while the server is still on the default. `POST /remote-config` with the current key and `{"api_key": "<new>"}` changes the key. [ctrlpi-remote](https://github.com/ctrlpi/ctrlpi-remote) uses both to reach a ctrlpi-mcp running on a Pi.
 
 > **No TLS.** The HTTP transport speaks plain HTTP, so `mcp.api_key` travels as plaintext. That's fine on a trusted LAN, but don't expose port 8315 directly to the internet. If you need remote access, tunnel it. `--local` keeps the listener on loopback. The key is exclusively read from the `Api-Key` header, keeping it out of shell history and proxy logs.
 
@@ -180,7 +170,7 @@ Every tool except `mcp_agents_list` takes an `agent` argument naming an entry fr
 | `mcp_agents_list(rescan)` | List all configured agents with `name`, `ip`, `port`, `online` (live `/hello` probe), `type` (`pi` / `pico` / `esp32`), `version` (from `/config/read`) and `has_default_key` (still on the shipped agent key), plus `last_updated_at`: when the agent list was last saved, UTC `YYYY-MM-DD HH:MM:SS`. Unreachable agents are listed too, marked `online=false`. The LAN is swept automatically every hour to find new agents. Pass `rescan=true` to sweep it right now (it takes 10 seconds or more, so use it only when looking for new hardware). |
 | `mcp_gpio_read(agent, name_or_gpio)` | Read a pin by number or name. Pass `"all"` to read every configured pin. |
 | `mcp_gpio_write(agent, name_or_gpio, value, duration)` | Write `"0"`, `"1"`, `"on"`, `"off"` or `"toggle"`. Optional `duration` (seconds) pulses the pin and reverts it; a pin's configured `max` clamps that, and supplies it when no duration is given. |
-| `mcp_gpio_config(agent, gpio, name, type, init, pullup, max, reversed, watched)` | Configure a pin. Same fields as the agent's REST config endpoint. |
+| `mcp_gpio_config(agent, gpio, name, type, init, pullup, max, reversed, watched, script)` | Configure a pin. Same fields as the agent's REST config endpoint, `script` included: a script from the agent's `scripts/` folder to run when the pin's value changes, `[on:\|off:]<file> [args]` (agent 0.9.50 or later; an empty string clears it). |
 | `mcp_gpio_watched(agent)` | List the GPIO pins that are currently being actively watched (emitting hardware interrupts/webhooks). |
 | `mcp_gpio_scan(agent)` | Scan every hardware pin (BCM 2-27 on a Pi, GP0-GP28 on a Pico, every usable pin of the chip on an ESP32). |
 | `mcp_sensor_config(agent, name, script, remove)` | Configure a named sensor. `script` is `"<file> [args...]"`: a bare filename in the agent's `scripts/` folder, letters/digits-only args. A shell script on a Pi, a `.py` the agent execs in-process on a Pico or ESP32. Pass `remove=true` to delete it. |
